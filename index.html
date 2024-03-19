@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Forecast</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            transition: color 1s ease; /* Add transition for font color */
+        }
+        .hidden {
+            display: none;
+        }
+        .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+}
+
+#search-icon-container {
+    cursor: pointer;
+}
+
+#search-icon {
+    width: 48px;
+    height: 48px;
+}
+
+.search-box {
+    position: absolute;
+    right: 20px;
+    top: 46px; /* Adjust this value based on the height of your header */
+    display: none;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.search-box input {
+    padding: 10px;
+    border: none;
+    border-radius: 20px;
+    margin-bottom: 10px;
+}
+
+.search-box button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    background-color: #007bff;
+    color: white;
+}
+
+        .weather-info {
+            margin-top: 20px;
+        }
+        #weather-icon {
+            width: 100px;
+            height: 100px;
+            margin: auto;
+            opacity: 0; /* Start with an invisible icon */
+            transition: opacity 1s ease; /* Add transition for opacity */
+        }
+        .background-video {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    min-width: 100%;
+    min-height: 100%;
+    z-index: -2; /* Place the videos behind the content */
+    transition: opacity 2s ease; /* Add transition for opacity */
+}
+
+#next-video {
+    opacity: 0; /* Start with an invisible next video */
+}
+#blur-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    backdrop-filter: blur(50px); /* Adjust the blur value as needed */
+    z-index: -1; /* Place the overlay above the video but below the content */
+}
+
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.7.6/lottie.min.js" type="text/javascript"></script>
+</head>
+<body>
+    <div id="blur-overlay">
+    <video id="current-video" class="background-video" autoplay muted loop>
+        <!-- Current video source will be set via JavaScript -->
+    </video>
+    <video id="next-video" class="background-video" autoplay muted loop>
+        <!-- Next video source will be set via JavaScript -->
+    </video>
+    </div>
+
+    <div class="header">
+        <h1>Weather Forecast</h1>
+        <div id="search-icon-container" onclick="toggleSearch()">
+            <img id="search-icon" src="icon/search.svg" alt="Search"> <!-- Replace with your search icon -->
+        </div>
+    </div>
+    <div class="search-box hidden">
+        <input type="text" id="search-input" placeholder="Enter your city">
+        <button onclick="fetchWeatherByCity()">Search</button>
+    </div>
+    <div class="weather-info">
+        <h2 id="city">City Name</h2>
+        <div id="weather-icon"><!-- Dynamic icon --></div>
+        <h3 id="temperature">Temperature: --°C</h3>
+        <h4 id="weather-status">Weather Status: --</h4>
+    </div>
+
+    <script>
+        var currentAnimation = null;
+
+        function toggleSearch() {
+    var searchBox = document.querySelector('.search-box');
+    if (searchBox.style.display === 'flex') {
+        searchBox.style.display = 'none';
+    } else {
+        searchBox.style.display = 'flex';
+    }
+}
+
+
+        function getUserIP(callback) {
+            fetch('https://api.ipify.org/?format=json')
+                .then(response => response.json())
+                .then(data => {
+                    callback(data.ip);
+                })
+                .catch(error => console.error('Error fetching IP address:', error));
+        }
+
+        function getLocationAndWeather() {
+            getUserIP(function(ip) {
+                var ipapiUrl = `https://ipapi.co/${ip}/json/`;
+
+                fetch(ipapiUrl)
+                    .then(response => response.json())
+                    .then(data => {
+                        var city = data.city;
+                        var latitude = data.latitude;
+                        var longitude = data.longitude;
+                        fetchWeather(city, latitude, longitude);
+                    })
+                    .catch(error => console.error('Error fetching location:', error));
+            });
+        }
+
+        function getCoordinates(cityName, callback) {
+            var apiKey = '09810019a783467ea2029e772574ee2c';
+            var apiUrl = `https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(cityName)}&key=${apiKey}`;
+
+            fetch(apiUrl)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.results && data.results.length > 0) {
+                        var coordinates = data.results[0].geometry;
+                        callback(coordinates);
+                    } else {
+                        alert('No results found for this location.');
+                    }
+                })
+                .catch(error => console.error('Error fetching coordinates:', error));
+        }
+
+        function fetchWeatherByCity() {
+            var city = document.getElementById('search-input').value;
+            getCoordinates(city, function(coordinates) {
+                var latitude = coordinates.lat;
+                var longitude = coordinates.lng;
+                fetchWeather(city, latitude, longitude);
+                toggleSearch();
+            });
+        }
+
+        function fetchWeather(city, latitude, longitude) {
+            var apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code`;
+
+            fetch(apiUrl)
+                .then(response => response.json())
+                .then(data => {
+                    var temperature = data.current.temperature_2m;
+                    var weatherCode = data.current.weather_code;
+                    var weatherStatus = getWeatherStatus(weatherCode);
+                    updateWeatherInfo(city, temperature, weatherStatus);
+                })
+                .catch(error => console.error('Error fetching weather data:', error));
+        }
+
+        function getWeatherStatus(weatherCode) {
+            switch (weatherCode) {
+                case 0:
+                    return 'Clear Sky';
+                case 1:
+                    return 'Mainly Clear';
+                case 2:
+                    return 'Partly Cloudy';
+                case 3:
+                    return 'Overcast';
+                case 45:
+                case 48:
+                    return 'Fog';
+                case 51:
+                case 53:
+                case 55:
+                    return 'Drizzle';
+                case 56:
+                case 57:
+                    return 'Freezing Drizzle';
+                case 61:
+                case 63:
+                case 65:
+                    return 'Rain';
+                case 66:
+                case 67:
+                    return 'Freezing Rain';
+                case 71:
+                case 73:
+                case 75:
+                    return 'Snowfall';
+                case 77:
+                    return 'Snow Grains';
+                case 80:
+                case 81:
+                case 82:
+                    return 'Showers';
+                case 85:
+                case 86:
+                    return 'Snow Showers';
+                case 95:
+                case 96:
+                case 99:
+                    return 'Thunderstorm';
+                default:
+                    return 'Unknown';
+            }
+        }
+
+        function updateWeatherInfo(city, temperature, weatherStatus) {
+            document.getElementById('city').innerText = city;
+            document.getElementById('temperature').innerText = 'Temperature: ' + temperature + '°C';
+            document.getElementById('weather-status').innerText = 'Weather Status: ' + weatherStatus;
+
+            var animationPath = getAnimationPath(weatherStatus);
+            var backgroundVideo = getBackgroundVideo(weatherStatus);
+            var weatherIconContainer = document.getElementById('weather-icon');
+
+            // Set the icon opacity to 0 before changing the animation
+            weatherIconContainer.style.opacity = 0;
+
+            // Destroy the previous animation if it exists
+            if (currentAnimation) {
+                currentAnimation.destroy();
+            }
+
+            // Load the new animation and set opacity to 1 after a short delay
+            setTimeout(function() {
+                currentAnimation = bodymovin.loadAnimation({
+                    container: weatherIconContainer,
+                    path: animationPath,
+                    renderer: 'svg',
+                    loop: true,
+                    autoplay: true
+                });
+                // Wait for the animation to load before setting opacity to 1
+                currentAnimation.addEventListener('DOMLoaded', function() {
+                    weatherIconContainer.style.opacity = 1;
+                });
+            }, 100); // Adjust the delay as needed
+        }
+
+        function getAnimationPath(weatherStatus) {
+            switch (weatherStatus) {
+                case 'Clear Sky':
+                    return 'icon/sunny.json';
+                case 'Mainly Clear':
+                case 'Partly Cloudy':
+                    return 'icon/cloudy.json';
+                case 'Overcast':
+                    return 'icon/overcast.json';
+                case 'Fog':
+                    return 'icon/fog.json';
+                case 'Drizzle':
+                case 'Rain':
+                case 'Showers':
+                    return 'icon/rain.json';
+                case 'Freezing Drizzle':
+                case 'Freezing Rain':
+                    return 'path/to/freezing_rain_animation.json';
+                case 'Snowfall':
+                case 'Snow Grains':
+                case 'Snow Showers':
+                    return 'path/to/snow_animation.json';
+                case 'Thunderstorm':
+                    return 'path/to/thunderstorm_animation.json';
+                default:
+                    return 'path/to/default_animation.json';
+            }
+        }
+
+        function getBackgroundVideo(weatherStatus) {
+            var videoPath;
+            switch (weatherStatus) {
+                case 'Clear Sky':
+                    videoPath = 'video/clearweather_dark.webm';
+                    break;
+                case 'Mainly Clear':
+                case 'Partly Cloudy':
+                    videoPath = 'path/to/partly_cloudy_video.webm';
+                    break;
+                case 'Overcast':
+                    videoPath = 'video/storm_clouds_timelapse_dark.webm';
+                    break;
+                case 'Fog':
+                    videoPath = 'path/to/fog_video.webm';
+                    break;
+                case 'Drizzle':
+                case 'Rain':
+                case 'Showers':
+                    videoPath = 'video/rain_dark.webm'; // Example video path with "_light"
+                    break;
+                case 'Freezing Drizzle':
+                case 'Freezing Rain':
+                    videoPath = 'path/to/freezing_rain_video_dark.webm'; // Example video path with "_dark"
+                    break;
+                case 'Snowfall':
+                case 'Snow Grains':
+                case 'Snow Showers':
+                    videoPath = 'path/to/snow_video.mp4';
+                    break;
+                case 'Thunderstorm':
+                    videoPath = 'path/to/thunderstorm_video.mp4';
+                    break;
+                default:
+                    videoPath = 'path/to/default_video.mp4';
+            }
+
+            var currentVideoElement = document.getElementById('current-video');
+    var nextVideoElement = document.getElementById('next-video');
+
+    // Set the next video source and fade it in
+    nextVideoElement.src = videoPath;
+    nextVideoElement.onloadeddata = function() {
+        nextVideoElement.style.opacity = 1;
+        // Change font color based on video name
+        if (videoPath.endsWith('_dark.mp4') || videoPath.endsWith('_dark.webm')) {
+            document.body.style.color = 'white';
+        } else if (videoPath.endsWith('_light.mp4') || videoPath.endsWith('_light.webm')) {
+            document.body.style.color = 'black';
+        }
+        // After the next video has faded in, swap the videos and reset opacity
+        setTimeout(function() {
+            currentVideoElement.src = videoPath;
+            nextVideoElement.style.opacity = 0;
+        }, 2000); // Match the duration of the opacity transition
+    };
+
+    return videoPath;
+}
+        document.addEventListener('DOMContentLoaded', function() {
+            getLocationAndWeather();
+        });
+    </script>
+</body>
+</html>
