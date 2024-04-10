@@ -20,13 +20,75 @@
     padding: 20px;
 }
 
-#search-icon-container {
-    cursor: pointer;
+/* Style for the weekly forecast container */
+.weekly-forecast {
+    display: flex; /* Align children horizontally */
+    flex-direction: row; /* Make sure children line up in a row */
+    overflow-x: auto; /* Allows horizontal scrolling */
+    padding: 20px 0;
 }
 
+/* Style for each forecast day */
+.day-forecast {
+    min-width: 120px; /* Minimum width for each day */
+    margin-right: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+     /* Spacing between days */
+    /* ... Other styles ... */
+}
+
+
+/* Ensure that the scrollbar is hidden and the content is allowed to overflow */
+.weekly-forecast::-webkit-scrollbar {
+    display: none; /* Hide scrollbar for Chrome, Safari, and Opera */
+}
+.weekly-forecast {
+    -ms-overflow-style: none; /* Hide scrollbar for IE and Edge */
+    scrollbar-width: none; /* Hide scrollbar for Firefox */
+    align-self: start;
+}
+#search-icon-container {
+    cursor: pointer;
+    
+}
+::-webkit-scrollbar {
+    display: none;
+}
+
+/* Hide scrollbar for IE, Edge, and Firefox */
+* {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
 #search-icon {
     width: 48px;
     height: 48px;
+}
+.weekly-forecast-container {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.5s ease-in, opacity 0.5s ease-in;
+    opacity: 0; /* Start fully transparent */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* If you also want to ensure that this container is always centered vertically: */
+    height: 100vh; /* Take up full height of the viewport */
+    /* ... other styles ... */
+}
+
+.weekly-forecast-container.not-hidden {
+    max-height: 100vh; /* Adjust as needed */
+    opacity: 1; /* Fully visible */
+    transition: max-height 0.5s ease-out, opacity 0.5s ease-out;
+}
+
+.weekly-forecast-container.not-hidden {
+    max-height: 100vh; /* Adjust as needed */
+    transition: max-height 0.5s ease-out;
 }
 
 .search-box {
@@ -116,10 +178,15 @@
         <h3 id="temperature">Temperature: --°C</h3>
         <h4 id="weather-status">Weather Status: --</h4>
     </div>
-
+    <!-- Weekly forecast (initially hidden) -->
+    <div id="weekly-forecast-container" class="weekly-forecast-container hidden">
+        <div id="weekly-forecast" class="weekly-forecast">
+            <!-- Weekly forecast items will be added here dynamically -->
+        </div>
+    </div>
     <script>
         var currentAnimation = null;
-
+        var canScroll = true;
         function toggleSearch() {
     var searchBox = document.querySelector('.search-box');
     if (searchBox.style.display === 'flex') {
@@ -128,7 +195,6 @@
         searchBox.style.display = 'flex';
     }
 }
-
 
         function getUserIP(callback) {
             fetch('https://api.ipify.org/?format=json')
@@ -183,7 +249,8 @@
         }
 
         function fetchWeather(city, latitude, longitude) {
-            var apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code`;
+            // Updating the API URL to include the 7-day forecast
+            var apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto`;
 
             fetch(apiUrl)
                 .then(response => response.json())
@@ -192,9 +259,67 @@
                     var weatherCode = data.current.weather_code;
                     var weatherStatus = getWeatherStatus(weatherCode);
                     updateWeatherInfo(city, temperature, weatherStatus);
+                    updateWeeklyForecast(data.daily); // Adding this line to handle the 7-day forecast
                 })
                 .catch(error => console.error('Error fetching weather data:', error));
         }
+
+        // New function to update the seven-day forecast display
+        function updateWeeklyForecast(dailyData) {
+    var weeklyForecastContainer = document.getElementById('weekly-forecast');
+    weeklyForecastContainer.innerHTML = ''; // Clear existing content
+
+    // Get today's date
+    var today = new Date();
+    // Get the start of today (at 00:00:00)
+    var startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    dailyData.time.forEach(function(dateTimeString, index) {
+        var dateTime = new Date(dateTimeString);
+
+        // Check if the dateTime is today or in the future
+        if (dateTime >= startOfToday) {
+            var dayForecast = document.createElement('div');
+            dayForecast.classList.add('day-forecast');
+
+            // Format the date as "Year-Month-Day"
+            var year = dateTime.getFullYear();
+            var month = dateTime.getMonth() + 1; // Months are 0-indexed
+            var day = dateTime.getDate();
+            // Pad the month and day with leading zeros if necessary
+            var formattedDate = year + '-' + month.toString().padStart(2, '0') + '-' + day.toString().padStart(2, '0');
+
+            var dayOfWeek = dateTime.toLocaleDateString(undefined, { weekday: 'long' });
+            
+            // Use the same getAnimationPath function to determine which icon to use
+            var animationPath = getAnimationPath(getWeatherStatus(dailyData.weather_code[index]));
+
+            // Create inner HTML for the forecast item
+            dayForecast.innerHTML = `
+                <h3>${dayOfWeek}</h3>
+                <div>${formattedDate}</div> <!-- Display the formatted date -->
+                <div class="weather-animation" style="width: 50px; height: 50px;"></div>
+                <p>High: ${dailyData.temperature_2m_max[index]}°C</p>
+                <p>Low: ${dailyData.temperature_2m_min[index]}°C</p>
+            `;
+
+            // Append the forecast to the container only if it's today or the next six days
+            if (weeklyForecastContainer.children.length < 7) {
+                weeklyForecastContainer.appendChild(dayForecast);
+            }
+
+            // Now, use Lottie to play the animation
+            var animationContainer = dayForecast.querySelector('.weather-animation');
+            bodymovin.loadAnimation({
+                container: animationContainer,
+                renderer: 'svg',
+                loop: true,
+                autoplay: true,
+                path: animationPath
+            });
+        }
+    });
+}
 
         function getWeatherStatus(weatherCode) {
             switch (weatherCode) {
@@ -369,6 +494,21 @@
         document.addEventListener('DOMContentLoaded', function() {
             getLocationAndWeather();
         });
+        document.addEventListener('wheel', function(e) {
+    var currentWeather = document.querySelector('.weather-info');
+    var forecastContainer = document.getElementById('weekly-forecast-container');
+
+    if (e.deltaY > 0) { // Scrolling down
+        currentWeather.classList.add('hidden');
+        forecastContainer.classList.remove('hidden');
+        forecastContainer.style.maxHeight = '100vh'; // Set max-height to enable transition
+        forecastContainer.style.opacity = '1'; // Set opacity to 1 to show the forecast
+    } else if (e.deltaY < 0 && window.scrollY === 0) { // Scrolling up
+        currentWeather.classList.remove('hidden');
+        forecastContainer.style.maxHeight = '0'; // Immediately collapse the forecast
+        forecastContainer.style.opacity = '0'; // Immediately start fading out the forecast
+    }
+});
     </script>
 </body>
 </html>
